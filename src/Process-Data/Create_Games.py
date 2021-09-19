@@ -1,22 +1,28 @@
+# some_file.py
+import sys
+# insert at 1, 0 is the script path (or '' in REPL)
+sys.path.insert(1, '/Users/kevin/repos/NBA-Machine-Learning-Sports-Betting/')
 import os
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from src.Dictionaries import team_index_07, team_index_08, team_index_12, team_index_13, team_index_14
+from src.Utils.Dictionaries import team_index_07, team_index_08, team_index_12, team_index_13, team_index_14
 
 season_array = ["2007-08", "2008-09", "2009-10", "2010-11", "2011-12", "2012-13", "2013-14", "2014-15", "2015-16",
                 "2016-17", "2017-18", "2018-19", "2019-20", "2020-21"]
-odds_directory = os.fsdecode('../../Odds-Data/Odds-Data-Clean')
+odds_directory = os.fsdecode('Odds-Data/Odds-Data-Clean')
 df = pd.DataFrame
 scores = []
 win_margin = []
 OU = []
 OU_Cover = []
 games = []
+home_odds = []
+away_odds = []
 for season in tqdm(season_array):
     file = pd.read_excel(odds_directory + '/' + '{}.xlsx'.format(season))
 
-    team_data_directory = os.fsdecode('../../Team-Data/{}'.format(season))
+    team_data_directory = os.fsdecode('Team-Data/{}'.format(season))
 
     for row in file.itertuples():
         home_team = row[3]
@@ -52,6 +58,9 @@ for season in tqdm(season_array):
             elif row[9] == row[5]:
                 OU_Cover.append(2)
 
+            home_odds.append(row[7])
+            away_odds.append(row[8])
+
             if season == '2007-08':
                 home_team_series = data_frame.iloc[team_index_07.get(home_team)]
                 away_team_series = data_frame.iloc[team_index_07.get(away_team)]
@@ -78,4 +87,6 @@ frame['Score'] = np.asarray(scores)
 frame['Home-Team-Win'] = np.asarray(win_margin)
 frame['OU'] = np.asarray(OU)
 frame['OU-Cover'] = np.asarray(OU_Cover)
-frame.to_excel('../../Datasets/Full-Data-Set-UnderOver-2020-21.xlsx')
+frame['Home-Odds'] = np.asarray(home_odds)
+frame['Away-Odds'] = np.asarray(away_odds)
+frame.to_excel('Datasets/Full-Data-Set-UnderOver-ML-Odds-2020-21.xlsx')
