@@ -1,15 +1,22 @@
-import neptune.new as neptune
-from neptune.new.integrations.tensorflow_keras import NeptuneCallback
+#import neptune
+#from neptune.new.integrations.tensorflow_keras import NeptuneCallback
 import time
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from tensorflow.keras.callbacks import TensorBoard, EarlyStopping
+from tensorflow import keras
+from tensorflow.keras import layers
+#import keras_tuner as kt
+from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint
 from sklearn import metrics
 import matplotlib.pyplot as plt 
+#import neptunecontrib.monitoring.kerastuner as npt_utils
+from tensorflow.keras.optimizers import Adam
 
-run = neptune.init(project='kehoffman3/nba-model',
-                   api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiJmM2IwMjY5NC0yOWE4LTQ0NzgtYjY5NS1mNTQyMDllZjc1MDEifQ==') # your credentials
+#neptune.init(project_qualified_name='kehoffman3/nba-model',
+#                   api_token='eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiJmM2IwMjY5NC0yOWE4LTQ0NzgtYjY5NS1mNTQyMDllZjc1MDEifQ==') # your credentials
+
+#neptune.create_experiment('nba-bayesian-sweep')
 
 def get_train_test_data(cutoff):
     data = pd.read_excel('../Datasets/Full-Data-Set-UnderOver-ML-Odds-2020-21.xlsx')
@@ -22,7 +29,9 @@ def get_train_test_data(cutoff):
     #scores = train_df['Score']
     margin = train_df['Home-Team-Win']
 
-    train_df.drop(['Score', 'Home-Team-Win', 'Unnamed: 0', 'TEAM_NAME', 'TEAM_NAME.1', 'Date', 'Date.1', 'OU', 'OU-Cover', 'Home-Odds', 'Away-Odds'], axis=1, inplace=True)
+    columns_to_drop = ['Score', 'Home-Team-Win', 'Unnamed: 0', 'TEAM_NAME', 'TEAM_NAME.1', 'Date', 'Date.1', 'OU', 'OU-Cover', 'Home-Odds', 'Away-Odds', 'Season']
+
+    train_df.drop(columns_to_drop, axis=1, inplace=True)
 
     train_df = train_df.values.astype(float)
 
@@ -31,7 +40,7 @@ def get_train_test_data(cutoff):
 
     margin = test_df['Home-Team-Win']
 
-    test_df.drop(['Score', 'Home-Team-Win', 'Unnamed: 0', 'TEAM_NAME', 'TEAM_NAME.1', 'Date', 'Date.1', 'OU', 'OU-Cover', 'Home-Odds', 'Away-Odds'], axis=1, inplace=True)
+    test_df.drop(columns_to_drop, axis=1, inplace=True)
 
     test_df = test_df.values.astype(float)
 
@@ -40,14 +49,60 @@ def get_train_test_data(cutoff):
     return data, x_train, x_test, y_train, y_test
 
 
+def build_tuner_model(hp):
+    model = tf.keras.Sequential()
+    model.add(layers.Flatten())
+    for i in range(hp.Int("num_layers", 2, 10)):
+        model.add(
+            layers.Dense(
+                units=hp.Int("units_" + str(i), min_value=8, max_value=256, step=8),
+                activation="relu",
+            )
+        )
+    model.add(layers.Dense(2, activation="softmax"))
+    model.compile(
+        optimizer=keras.optimizers.Adam(hp.Choice("learning_rate", [1e-2, 1e-3, 1e-4])),
+        loss="sparse_categorical_crossentropy",
+        metrics=["accuracy"],
+    )
+    return model
+
+def tune_model(x_train, y_train, x_test):
+    tuner = kt.BayesianOptimization(hypermodel = build_tuner_model,
+                     objective = 'val_accuracy',
+                     max_trials=200,
+					 project_name='hyperband_tuner_2',
+                     logger = npt_utils.NeptuneLogger())
+    earlyStopping = EarlyStopping(monitor='val_loss', patience=25, verbose=0, mode='min')
+    batch_size = 32
+    tuner.search(x_train,y_train,
+             epochs=100,
+             validation_split=0.1,
+             batch_size=32,
+             shuffle=True,
+             verbose=1,
+             initial_epoch=0,
+             callbacks=[earlyStopping],
+             use_multiprocessing=True,
+             workers=8)
+    npt_utils.log_tuner_info(tuner)
+
+    best_hps=tuner.get_best_hyperparameters(num_trials=1)[0]
+    model = tuner.hypermodel.build(best_hps)
+    earlyStopping = EarlyStopping(monitor='val_loss', patience=100, verbose=0, mode='min')
+    model.fit(x_train, y_train, epochs=500, validation_split=0.1, batch_size=batch_size,
+            callbacks=[earlyStopping])
+    return model.predict(x_test)
+
+
 def build_model_and_predict(x_train, y_train, x_test):
     current_time = str(time.time())
 
     #tensorboard = TensorBoard(log_dir='../Logs/{}'.format(current_time))
     earlyStopping = EarlyStopping(monitor='val_loss', patience=100, verbose=0, mode='min')
-    #mcp_save = ModelCheckpoint('../Models/Trained-Model-ML-' + current_time, save_best_only=True, monitor='val_loss', mode='min')
-    tensorboard = TensorBoard(log_dir='../Logs/{}'.format(current_time))
-    neptune_cbk = NeptuneCallback(run=run, base_namespace='metrics')
+    mcp_save = ModelCheckpoint('../Models/Final-Model-ML-' + current_time, save_best_only=True, monitor='val_loss', mode='min')
+    #tensorboard = TensorBoard(log_dir='../Logs/{}'.format(current_time))
+    #neptune_cbk = NeptuneCallback(run=run, base_namespace='metrics')
     model = tf.keras.models.Sequential()
     model.add(tf.keras.layers.Flatten())
 
@@ -57,13 +112,12 @@ def build_model_and_predict(x_train, y_train, x_test):
     # model.add(tf.keras.layers.Dense(8, activation=tf.nn.relu6))
     # model.add(tf.keras.layers.Dense(4, activation=tf.nn.relu6))
 
-    model.add(tf.keras.layers.Dense(64, activation=tf.nn.relu6))
-    model.add(tf.keras.layers.Dropout(0.5))
-    model.add(tf.keras.layers.Dense(32, activation=tf.nn.relu6))
-    model.add(tf.keras.layers.Dropout(0.5))
-    model.add(tf.keras.layers.Dense(16, activation=tf.nn.relu6))
-    model.add(tf.keras.layers.Dense(8, activation=tf.nn.relu6))
-    model.add(tf.keras.layers.Dense(4, activation=tf.nn.relu6))
+    activation = tf.keras.activations.selu
+    model.add(tf.keras.layers.Dense(64, activation=activation))
+    model.add(tf.keras.layers.Dense(32, activation=activation))
+    model.add(tf.keras.layers.Dense(16, activation=activation))
+    model.add(tf.keras.layers.Dense(8, activation=activation))
+    model.add(tf.keras.layers.Dense(4, activation=activation))
     # model.add(tf.keras.layers.Dense(32, activation=tf.nn.relu6))
     # model.add(tf.keras.layers.Dense(32, activation=tf.nn.relu6))
     # model.add(tf.keras.layers.Dense(4, activation=tf.nn.relu6))
@@ -72,15 +126,18 @@ def build_model_and_predict(x_train, y_train, x_test):
     model.add(tf.keras.layers.Dense(2, activation=tf.nn.softmax))
 
     batch_size = 32
-    run['parameters'] = {
-        'batch_size': batch_size
-    }
+    optimizer = 'adam'
+    # run['parameters'] = {
+    #     'batch_size': batch_size,
+    #     'activation': activation.__name__,
+    #     'optimizer': optimizer
+    # }
 
-    run['layers'] = "64|D.5|32|D.5|16|8|4"
+    # run['layers'] = "64|32|16|8|4"
 
-    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer=Adam(lr=0.01), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
     model.fit(x_train, y_train, epochs=500, validation_split=0.1, batch_size=batch_size,
-            callbacks=[neptune_cbk, earlyStopping, tensorboard])
+            callbacks=[mcp_save, earlyStopping])
 
     return model.predict(x_test)
 
@@ -120,17 +177,39 @@ def get_bet_results(Y_pred, Y_test, test_df):
     # _ = agg.plot(x="dates", y="cumulative")
     # plt.ylabel('units')
     # plt.show()
-    run["metrics/accuracy"] = metrics.accuracy_score(Y_pred, Y_test)
-    run["metrics/total_profit"] = agg['cumulative'].iloc[-1]
-    run["metrics/best_7_days"] =  agg['profit'].rolling(7).sum().max()
-    run["metrics/worst_7_days"] =  agg['profit'].rolling(7).sum().min()
-    run["metrics/best_30_days"] = agg['profit'].rolling(30).sum().max()
-    run["metrics/worst_30_days"] = agg['profit'].rolling(30).sum().min()
+    accuracy = metrics.accuracy_score(Y_pred, Y_test)
+    total_profit = agg['cumulative'].iloc[-1]
+    best_7_days =  agg['profit'].rolling(7).sum().max()
+    worst_7_days =  agg['profit'].rolling(7).sum().min()
+    best_30_days = agg['profit'].rolling(30).sum().max()
+    worst_30_days = agg['profit'].rolling(30).sum().min()
+
+    print(accuracy)
+    print(total_profit)
+    print(best_7_days)
+    print(worst_7_days)
+    print(best_30_days)
+    print(worst_30_days)
+
+    # neptune.log_metric('accuracy', accuracy)
+    # neptune.log_metric('total_profit', total_profit)
+    # neptune.log_metric('best_7_days', best_7_days)
+    # neptune.log_metric('worst_7_days', worst_7_days)
+    # neptune.log_metric('best_30_days', best_30_days)
+    # neptune.log_metric('worst_30_days', worst_30_days)
+
+    # run["metrics/accuracy"] = accuracy
+    # run["metrics/total_profit"] = total_profit
+    # run["metrics/best_7_days"] =  best_7_days
+    # run["metrics/worst_7_days"] =  worst_7_days
+    # run["metrics/best_30_days"] = best_30_days
+    # run["metrics/worst_30_days"] = worst_30_days
     return agg
 
 if __name__ == '__main__':
     cutoff = 2016
     data, x_train, x_test, y_train, y_test = get_train_test_data(cutoff)
+    #y_pred = tune_model(x_train, y_train, x_test)
     y_pred = build_model_and_predict(x_train, y_train, x_test)
     y_pred = np.argmax(y_pred, axis=1)
     _ = get_bet_results(y_pred, y_test, data[data["Season"] >= cutoff ])

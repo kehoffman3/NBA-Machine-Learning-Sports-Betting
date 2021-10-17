@@ -108,3 +108,4 @@ venv.bak/
 Logs
 Models/Trained-Model*
 Model-Building/.neptune
+Model-Building/hyperband_tuner*

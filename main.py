@@ -1,11 +1,12 @@
 import argparse
 import pandas as pd
+from pandas.core import frame
 import tensorflow as tf
 from src.Predict import NN_Runner, XGBoost_Runner
 from src.Utils.Dictionaries import team_index_current
 from src.Utils.tools import get_json_data, to_data_frame, get_todays_games_json, create_todays_games
 
-todays_games_url = 'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2020/scores/00_todays_scores.json'
+todays_games_url = 'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2021/scores/00_todays_scores.json'
 data_url = 'https://stats.nba.com/stats/leaguedashteamstats?' \
            'Conference=&DateFrom=&DateTo=&Division=&GameScope=&' \
            'GameSegment=&LastNGames=0&LeagueID=00&Location=&' \
@@ -23,12 +24,11 @@ def createTodaysGames(games, df):
     for game in games:
         home_team = game[0]
         away_team = game[1]
-        todays_games_uo.append(input(home_team + ' vs ' + away_team + ': '))
+        #todays_games_uo.append(input(home_team + ' vs ' + away_team + ': '))
         home_team_series = df.iloc[team_index_current.get(home_team)]
         away_team_series = df.iloc[team_index_current.get(away_team)]
         stats = home_team_series.append(away_team_series)
         match_data.append(stats)
-
     games_data_frame = pd.concat(match_data, ignore_index=True, axis=1)
     games_data_frame = games_data_frame.T
 
@@ -36,19 +36,21 @@ def createTodaysGames(games, df):
     data = frame_ml.values
     data = data.astype(float)
 
-    return data, todays_games_uo, frame_ml
+    return data, frame_ml
 
 
 def main():
     data = get_todays_games_json(todays_games_url)
     games = create_todays_games(data)
+    print(games)
     data = get_json_data(data_url)
     df = to_data_frame(data)
-    data, todays_games_uo, frame_ml = createTodaysGames(games, df)
+    data, frame_ml = createTodaysGames(games, df)
+    print(frame_ml)
     if args.nn:
         print("------------Neural Network Model Predictions-----------")
         data = tf.keras.utils.normalize(data, axis=1)
-        NN_Runner.nn_runner(data, todays_games_uo, frame_ml, games)
+        NN_Runner.nn_runner(data, frame_ml, games)
         print("-------------------------------------------------------")
     if args.xgb:
         print("---------------XGBoost Model Predictions---------------")
