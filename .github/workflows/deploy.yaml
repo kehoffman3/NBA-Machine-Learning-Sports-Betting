@@ -50,5 +50,5 @@ jobs:
       - name: Update Lambda functions
         env:
           IMAGE_NAME: ${{ steps.build-image.outputs.image}}
-        run: sh ./kevin/lambda/update_lambda_funcs.sh
+        run: sh ./src/lambda/update_lambda_funcs.sh
         
