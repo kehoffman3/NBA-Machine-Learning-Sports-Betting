@@ -207,7 +207,7 @@ def get_bet_results(Y_pred, Y_test, test_df):
     return agg
 
 if __name__ == '__main__':
-    cutoff = 2016
+    cutoff = 2018
     data, x_train, x_test, y_train, y_test = get_train_test_data(cutoff)
     #y_pred = tune_model(x_train, y_train, x_test)
     y_pred = build_model_and_predict(x_train, y_train, x_test)

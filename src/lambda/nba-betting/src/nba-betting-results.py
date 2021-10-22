@@ -1,67 +1,30 @@
-import mlbgame
 from datetime import datetime
 from datetime import timedelta
 import pandas as pd
-import numpy as np
 import boto3
 from io import StringIO
 import logging
 import pytz
+from data import get_json_data, to_data_frame, get_todays_games_json, create_todays_games
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-team_lookup = {
-        "Mets": "NYM",
-        "Padres": "SDP",
-        "Nationals": "WSN",
-        "Braves": "ATL",
-        "Yankees": "NYY",
-        "Rays": "TBR",
-        "Orioles": "BAL",
-        "Indians": "CLE",
-        "Phillies": "PHI",
-        "Pirates": "PIT",
-        "Rangers": "TEX",
-        "Rockies": "COL",
-        "Marlins": "MIA",
-        "Red Sox": "BOS",
-        "Cubs": "CHC",
-        "Blue Jays": "TOR",
-        "Astros": "HOU",
-        "Angels": "LAA",
-        "Dodgers": "LAD",
-        "White Sox": "CHW",
-        "Giants": "SFG",
-        "Royals": "KCR",
-        "Twins": "MIN",
-        "Tigers": "DET",
-        "Cardinals": "STL",
-        "Brewers": "MIL",
-        "D-backs": "ARI",
-        "Reds": "CIN",
-        "Athletics": "OAK",
-        "Mariners": "SEA"
-
-    }
+BUCKET = 'kehoffmn3-nba'
+todays_games_url = 'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/2021/scores/00_todays_scores.json'
 
 def lambda_handler(event, context):
     tz = pytz.timezone('US/Eastern')
     today = datetime.now(tz)
-    yesterday = today - timedelta(days=1)
-    yesterday_string = yesterday.strftime("%Y-%m-%d")
-    yesterdays_games = mlbgame.day(yesterday.year, yesterday.month, yesterday.day)
+    data = get_todays_games_json(todays_games_url)
+    results = get_results_from_games(data)
+
     games_df = get_team_results(yesterdays_games)
 
     preds_df = get_preds(yesterday)
-    
-    # Only grade all bets
-    # results_ev = grade_bets_ev(preds_df, winning_teams, losing_teams, yesterday_string)
-    # results_ev_file_name = f"game-betting-results/MLB_RESULTS_{yesterday.strftime('%Y_%m_%d')}.csv"
-    # save_to_s3(results_ev, results_ev_file_name)
 
     results_full = grade_bets_full(preds_df, games_df, yesterday_string)
-    results_full_file_name = f"game-betting-results/MLB_RESULTS_FULL_{yesterday.strftime('%Y_%m_%d')}.csv"
+    results_full_file_name = f"game-betting-results/NBA_RESULTS_FULL_{yesterday.strftime('%Y_%m_%d')}.csv"
     save_to_s3(results_full, results_full_file_name)
 
     return {
@@ -69,20 +32,19 @@ def lambda_handler(event, context):
         'body': "Success!"
     }
 
+    
 
 def save_to_s3(data, file_name):
-    bucket = 'kehoffmn3-baseball'
     csv_buffer = StringIO()
     data.to_csv(csv_buffer, index=False)
     s3_resource = boto3.resource('s3')
-    s3_resource.Object(bucket, file_name).put(Body=csv_buffer.getvalue())
+    s3_resource.Object(BUCKET, file_name).put(Body=csv_buffer.getvalue())
 
 def get_preds(yesterday):
-    bucket = 'kehoffmn3-baseball'
 
     s3_client = boto3.client('s3')
-    preds_file_name = f"todays-games-preds/MLB_PREDS_{yesterday.strftime('%Y_%m_%d')}.csv"
-    response = s3_client.get_object(Bucket=bucket, Key=preds_file_name)
+    preds_file_name = f"todays-games-preds/NBA_PREDS_{yesterday.strftime('%Y_%m_%d')}.csv"
+    response = s3_client.get_object(Bucket=BUCKET, Key=preds_file_name)
     status = response.get("ResponseMetadata", {}).get("HTTPStatusCode")
 
     if status == 200:
@@ -92,12 +54,10 @@ def get_preds(yesterday):
         raise Exception("Failed to retrieve yesterday's predictions")
     return preds_df
 
-def get_team_results(games):
-    winning_teams = []
-    losing_teams = []
+def get_results_from_games(games):
     results = {
-        "date": [],
-        "time": [],
+        #"date": [],
+        #"time": [],
         "game_id": [],
         "away": [],
         "home": [],
@@ -105,15 +65,24 @@ def get_team_results(games):
     }
     for game in games:
         try:
-            away_team = team_lookup[game.away_team]
-            home_team = team_lookup[game.home_team]
-            winning_team = team_lookup[game.w_team]
-            date = game.date
-            time = game.game_start_time
-            game_id = game.game_id
-            results["date"].append(date)
-            results["time"].append(time)
-            results["game_id"].append(game_id)
+            if game.get("stt") != "Final":
+                continue
+            home = game.get('h')
+            home_score = home.get('s')
+            away = game.get('v')
+            away_score = away.get('s')
+            gid = game.get('gid')
+            winner = home if home_score > away_score else away
+
+            home_team = home.get('tc') + ' ' + home.get('tn')
+            away_team = away.get('tc') + ' ' + away.get('tn')
+            winning_team = winner.get('tc') + ' ' + winner.get('tn')
+            #date = game.date
+            #time = game.game_start_time
+
+            #results["date"].append(date)
+            #results["time"].append(time)
+            results["game_id"].append(gid)
             results["away"].append(away_team)
             results["home"].append(home_team)
             results["winner"].append(winning_team)
@@ -218,3 +187,8 @@ def grade_bets_ev(preds_df, winning_teams, losing_teams, yesterday_string):
     results_df = pd.DataFrame(results)
     return results_df
 
+if __name__ == "__main__":
+    #lambda_handler(None, None)
+    data = get_todays_games_json(todays_games_url)
+    results = get_results_from_games(data)
+    print(results)

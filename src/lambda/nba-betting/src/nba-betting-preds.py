@@ -12,7 +12,6 @@ import logging
 import requests
 import tensorflow as tf
 from tensorflow.keras.models import load_model
-from copy import copy
 from data import get_json_data, to_data_frame, get_todays_games_json, create_todays_games
 
 logger = logging.getLogger()
@@ -26,7 +25,7 @@ data_url = 'https://stats.nba.com/stats/leaguedashteamstats?' \
            'MeasureType=Base&Month=0&OpponentTeamID=0&Outcome=&' \
            'PORound=0&PaceAdjust=N&PerMode=PerGame&Period=0&' \
            'PlayerExperience=&PlayerPosition=&PlusMinus=N&Rank=N&' \
-           'Season=2020-21&SeasonSegment=&SeasonType=Regular+Season&ShotClockRange=&' \
+           'Season=2021-22&SeasonSegment=&SeasonType=Regular+Season&ShotClockRange=&' \
            'StarterBench=&TeamID=0&TwoWay=0&VsConference=&VsDivision='
 
 team_index_current = {
@@ -76,13 +75,9 @@ def createTodaysGames(games, df):
     games_data_frame = pd.concat(match_data, ignore_index=True, axis=1)
     games_data_frame = games_data_frame.T
 
-    print(len(games_data_frame.columns))
-
     frame_ml = games_data_frame.drop(columns=['TEAM_ID', 'CFID', 'CFPARAMS', 'TEAM_NAME'])
     data = frame_ml.values
     data = data.astype(float)
-
-    print(frame_ml.columns)
 
     return data, frame_ml
 
@@ -93,7 +88,6 @@ def lambda_handler(event, context):
     games = create_todays_games(data)
     data = get_json_data(data_url)
     df = to_data_frame(data)
-    print(games)
     if not games:
         return {
             'statusCode': 200,
@@ -106,22 +100,20 @@ def lambda_handler(event, context):
 
     model = load_model('models/nba_nn_v1')
     preds_df = predict_nba_games(data, games, model)
-    print(preds_df)
     
     
     # Save data to S3
-    #file_name = f"todays-games/NBA_{today.strftime('%Y_%m_%d')}.csv"
-    #save_to_s3(data, file_name)
+    file_name = f"todays-games/NBA_{today.strftime('%Y_%m_%d')}.csv"
+    save_to_s3(data, file_name)
 
     # Make predictions and save to seperate file
     final_df = get_odds_and_ev(preds_df)
-    print(final_df)
-    #if (event and not event.get("email_only")) or not event:
-    #    preds_file_name = f"todays-games-preds/NBA_PREDS_{today.strftime('%Y_%m_%d')}.csv"
-    #    save_to_s3(final_df, preds_file_name)
+    if (event and not event.get("email_only")) or not event:
+       preds_file_name = f"todays-games-preds/NBA_PREDS_{today.strftime('%Y_%m_%d')}.csv"
+       save_to_s3(final_df, preds_file_name)
 
     # Send an email
-    #email_nba_preds(final_df)
+    email_nba_preds(final_df)
     
     return {
         'statusCode': 200,
@@ -133,13 +125,13 @@ def to_percent(col):
 
 def email_nba_preds(df):
 
-    formatted_df = df[['away_team', 'home_team', 'start_time', 'away_odds', 'home_odds', 'best_pick', 'away_pitcher_id', 'home_pitcher_id', 'away_prob', 'home_prob',  'best_pick_ev']]
+    formatted_df = df[['away_team', 'home_team', 'away_odds', 'home_odds', 'best_pick', 'away_prob', 'home_prob',  'best_pick_ev']]
 
     formatted_df['away_prob'] = to_percent(formatted_df['away_prob'])
     formatted_df['home_prob'] = to_percent(formatted_df['home_prob'])
     formatted_df['best_pick_ev'] = to_percent(formatted_df['best_pick_ev'])
 
-    formatted_df.rename({'away_team':'Away Team', 'home_team': 'Home Team', 'start_time': 'Start Time', 'away_pitcher_id': 'Away Pitcher', 'home_pitcher_id': 'Home Pitcher', 'away_prob': 'Away Win Probability', 'home_prob': 'Home Win Probability', 'away_odds': 'Away Odds', 'home_odds': 'Home Odds', 'best_pick': 'Model Prediction', 'best_pick_ev': "Expected Value"}, axis=1, inplace=True)
+    formatted_df.rename({'away_team':'Away Team', 'home_team': 'Home Team', 'away_prob': 'Away Win Probability', 'home_prob': 'Home Win Probability', 'away_odds': 'Away Odds', 'home_odds': 'Home Odds', 'best_pick': 'Model Prediction', 'best_pick_ev': "Expected Value"}, axis=1, inplace=True)
 
     today = datetime.now()
     
@@ -233,14 +225,6 @@ def predict_nba_games(data, games, model):
         'away_prob': away_probs
     })
 
-    # test_data = create_features(games_df, False, test=True)
-    # mlb_model = XGBClassifier()
-    # mlb_model.load_model('models/mlb_xgboost.model')
-    # probs = mlb_model.predict_proba(test_data)
-    # games_df['away_prob'] = probs[:,0]
-    # games_df['home_prob'] = probs[:,1]
-    #ml_predictions_array = []
-
 
 
 def calc_implied_prob(odds):
@@ -253,9 +237,6 @@ def get_odds_and_ev(df):
 
     tz = pytz.timezone('US/Eastern')
     today = datetime.now(tz)
-
-    import json
-    import requests
     url = "https://odds.p.rapidapi.com/v1/odds"
 
     querystring = {"sport":"basketball_nba","region":"us","mkt":"h2h","dateFormat":"unix","oddsFormat":"american"}
@@ -275,16 +256,13 @@ def get_odds_and_ev(df):
     away_odds_list = []
     away_team_list = []
 
-    print(respone_json["data"][0])
-    todays_games = list(filter(lambda g: datetime.fromtimestamp(g["commence_time"]).astimezone(tz).day == today.day, respone_json["data"]))
 
-    print(list(map(lambda g: datetime.fromtimestamp(g["commence_time"]).astimezone(tz).strftime("%m/%d/%Y, %H:%M:%S"), respone_json["data"])))
+    todays_games = list(filter(lambda g: datetime.fromtimestamp(g["commence_time"]).astimezone(tz).day == today.day, respone_json["data"]))
 
     for game in todays_games:
         teams = game["teams"]
         home_team = game["home_team"]
 
-        
         
         odds_dict = {}
         for site in game["sites"]:
