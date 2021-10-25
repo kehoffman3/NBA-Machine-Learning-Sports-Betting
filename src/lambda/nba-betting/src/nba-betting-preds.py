@@ -6,11 +6,10 @@ import boto3
 from botocore.exceptions import ClientError
 from io import StringIO
 import pytz
-import os
 import numpy as np
 import logging
 import requests
-import tensorflow as tf
+from tensorflow.keras.utils import normalize
 from tensorflow.keras.models import load_model
 from data import get_json_data, to_data_frame, get_todays_games_json, create_todays_games
 
@@ -84,6 +83,7 @@ def createTodaysGames(games, df):
 def lambda_handler(event, context):
     tz = pytz.timezone('US/Eastern')
     today = datetime.now(tz)
+    print("Getting todays games...")
     data = get_todays_games_json(todays_games_url)
     games = create_todays_games(data)
     data = get_json_data(data_url)
@@ -95,16 +95,13 @@ def lambda_handler(event, context):
         }
     data, _ = createTodaysGames(games, df)
     
-    data = tf.keras.utils.normalize(data, axis=1)
+    data = normalize(data, axis=1)
     
 
+    print("Loading model...")
     model = load_model('models/nba_nn_v1')
+    print("Making predictions...")
     preds_df = predict_nba_games(data, games, model)
-    
-    
-    # Save data to S3
-    file_name = f"todays-games/NBA_{today.strftime('%Y_%m_%d')}.csv"
-    save_to_s3(data, file_name)
 
     # Make predictions and save to seperate file
     final_df = get_odds_and_ev(preds_df)
@@ -114,6 +111,8 @@ def lambda_handler(event, context):
 
     # Send an email
     email_nba_preds(final_df)
+
+    # print(final_df)
     
     return {
         'statusCode': 200,
@@ -206,7 +205,6 @@ def predict_nba_games(data, games, model):
     game_ids = []
     for idx, row in enumerate(data):
         pred = model.predict(np.array([row]))
-        print(pred)
         
         home_probs.append(pred[0][1])
         away_probs.append(pred[0][0])
@@ -242,7 +240,7 @@ def get_odds_and_ev(df):
     querystring = {"sport":"basketball_nba","region":"us","mkt":"h2h","dateFormat":"unix","oddsFormat":"american"}
 
     headers = {
-        'x-rapidapi-key': os.getenv("RAPID_API_KEY"),
+        'x-rapidapi-key': '443730144emsh1ae00e467c31b68p14e65bjsnb5f3aeef6a68',
         'x-rapidapi-host': "odds.p.rapidapi.com"
         }
 
@@ -292,7 +290,6 @@ def get_odds_and_ev(df):
                 break
 
     odds_df = pd.DataFrame({"home_team": home_team_list, "away_odds":away_odds_list, "home_odds": home_odds_list})
-    print(odds_df)
 
     final_df = df.merge(odds_df, left_on="home_team", right_on="home_team", how='left')
     final_df["away_implied"] = final_df.apply(lambda d: calc_implied_prob(d["away_odds"]),axis=1)
@@ -304,6 +301,7 @@ def get_odds_and_ev(df):
     final_df["best_pick_ev"] = np.where(final_df["home_prob"] >= final_df["away_prob"], final_df["home_ev"], final_df["away_ev"])
     final_df["best_pick"] = np.where(final_df["home_prob"] >= final_df["away_prob"], final_df["home_team"], final_df["away_team"])
     final_df.sort_values(by="best_pick_ev", ascending=False, inplace=True)
+    #print(final_df)
     return final_df
 
 
