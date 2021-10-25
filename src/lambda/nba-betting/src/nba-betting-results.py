@@ -16,10 +16,11 @@ todays_games_url = 'https://data.nba.com/data/10s/v2015/json/mobile_teams/nba/20
 def lambda_handler(event, context):
     tz = pytz.timezone('US/Eastern')
     today = datetime.now(tz)
-    data = get_todays_games_json(todays_games_url)
-    results = get_results_from_games(data)
+    yesterday = today - timedelta(days=1)
+    yesterday_string = yesterday.strftime("%Y-%m-%d")
 
-    games_df = get_team_results(yesterdays_games)
+    data = get_todays_games_json(todays_games_url)
+    games_df = get_results_from_games(data, yesterday_string)
 
     preds_df = get_preds(yesterday)
 
@@ -54,9 +55,9 @@ def get_preds(yesterday):
         raise Exception("Failed to retrieve yesterday's predictions")
     return preds_df
 
-def get_results_from_games(games):
+def get_results_from_games(games, yesterday_string):
     results = {
-        #"date": [],
+        "date": [],
         #"time": [],
         "game_id": [],
         "away": [],
@@ -77,10 +78,9 @@ def get_results_from_games(games):
             home_team = home.get('tc') + ' ' + home.get('tn')
             away_team = away.get('tc') + ' ' + away.get('tn')
             winning_team = winner.get('tc') + ' ' + winner.get('tn')
-            #date = game.date
             #time = game.game_start_time
 
-            #results["date"].append(date)
+            results["date"].append(yesterday_string)
             #results["time"].append(time)
             results["game_id"].append(gid)
             results["away"].append(away_team)
@@ -89,13 +89,15 @@ def get_results_from_games(games):
         except AttributeError as e:
             print(e)
             continue
-    return pd.DataFrame(results)
+
+    df = pd.DataFrame(results)
+    df["game_id"] = pd.to_numeric(df["game_id"])
+    return df
 
 
 def grade_bets_full(preds_df, games_df, yesterday_string):
     results = {
     "date":[],
-    "time":[],
     "pick":[],
     "odds":[],
     "wager":[],
@@ -111,7 +113,7 @@ def grade_bets_full(preds_df, games_df, yesterday_string):
         is_bet_home = row["home_prob"] >= row["away_prob"]
         odds = row["home_odds"] if is_bet_home else row["away_odds"]
         # Ignore betting on big favorites 
-        if odds < -200:
+        if odds < -300:
             continue
 
         betting_team = row["home_team"] if is_bet_home else row["away_team"]
@@ -126,7 +128,7 @@ def grade_bets_full(preds_df, games_df, yesterday_string):
         winner = target["winner"].iloc[0]
         
         results["date"].append(yesterday_string)
-        results["time"].append(row["start_time"])
+        #results["time"].append(row["start_time"])
         results["pick"].append(betting_team)
 
         results["odds"].append(odds)
@@ -151,44 +153,6 @@ def grade_bets_full(preds_df, games_df, yesterday_string):
     return results_df
 
 
-def grade_bets_ev(preds_df, winning_teams, losing_teams, yesterday_string):
-    
-    results = {
-        "date":[],
-        "pick":[],
-        "odds":[],
-        "wager":[],
-        "result":[],
-        "profit":[]
-
-    }
-    for index,row in preds_df.iterrows():
-        # Bet on all games with ev greater than 0.05
-        if row["best_ev"] > 0.05:
-            betting_team = row["betting_team"]
-            results["date"].append(yesterday_string)
-            results["pick"].append(betting_team)
-            odds = row["home_odds"] if row["home_ev"] > row["away_ev"] else row["away_odds"]
-            results["odds"].append(odds)
-            # Always betting 1 unit
-            wager = 1
-            results["wager"].append(wager)
-            result = "P"
-            profit = 0
-            if betting_team in winning_teams:
-                result = "W"
-                profit = odds/100 * wager if odds > 0 else wager * -100/odds
-
-            elif betting_team in losing_teams:
-                result = "L"
-                profit = -wager
-            results["result"].append(result)
-            results["profit"].append(profit)
-    results_df = pd.DataFrame(results)
-    return results_df
 
 if __name__ == "__main__":
-    #lambda_handler(None, None)
-    data = get_todays_games_json(todays_games_url)
-    results = get_results_from_games(data)
-    print(results)
+    lambda_handler(None, None)
