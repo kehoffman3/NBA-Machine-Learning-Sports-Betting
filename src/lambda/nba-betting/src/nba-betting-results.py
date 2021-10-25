@@ -19,10 +19,17 @@ def lambda_handler(event, context):
     yesterday = today - timedelta(days=1)
     yesterday_string = yesterday.strftime("%Y-%m-%d")
 
+    preds_df = get_preds(yesterday)
+    if not preds_df:
+        return {
+            'statusCode': 200,
+            'body': "No predictions available from yesterday"
+        }
+
     data = get_todays_games_json(todays_games_url)
     games_df = get_results_from_games(data, yesterday_string)
 
-    preds_df = get_preds(yesterday)
+    
 
     results_full = grade_bets_full(preds_df, games_df, yesterday_string)
     results_full_file_name = f"game-betting-results/NBA_RESULTS_FULL_{yesterday.strftime('%Y_%m_%d')}.csv"
@@ -52,7 +59,7 @@ def get_preds(yesterday):
         print(f"Successful S3 get_object response. Status - {status}")
         preds_df = pd.read_csv(response.get("Body"))
     else:
-        raise Exception("Failed to retrieve yesterday's predictions")
+        return None
     return preds_df
 
 def get_results_from_games(games, yesterday_string):
