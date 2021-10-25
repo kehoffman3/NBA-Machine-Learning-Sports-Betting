@@ -8,10 +8,9 @@ from io import StringIO
 import pytz
 import numpy as np
 import logging
-import requests
 from tensorflow.keras.utils import normalize
 from tensorflow.keras.models import load_model
-from data import get_json_data, to_data_frame, get_todays_games_json, create_todays_games
+from data import get_json_data, to_data_frame, get_todays_games_json, create_todays_games, get_odds_json
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -26,6 +25,7 @@ data_url = 'https://stats.nba.com/stats/leaguedashteamstats?' \
            'PlayerExperience=&PlayerPosition=&PlusMinus=N&Rank=N&' \
            'Season=2021-22&SeasonSegment=&SeasonType=Regular+Season&ShotClockRange=&' \
            'StarterBench=&TeamID=0&TwoWay=0&VsConference=&VsDivision='
+odds_url = "https://odds.p.rapidapi.com/v1/odds"
 
 team_index_current = {
     'Atlanta Hawks': 0,
@@ -109,7 +109,7 @@ def lambda_handler(event, context):
        preds_file_name = f"todays-games-preds/NBA_PREDS_{today.strftime('%Y_%m_%d')}.csv"
        save_to_s3(final_df, preds_file_name)
 
-    # Send an email
+    #Send an email
     email_nba_preds(final_df)
 
     # print(final_df)
@@ -235,18 +235,8 @@ def get_odds_and_ev(df):
 
     tz = pytz.timezone('US/Eastern')
     today = datetime.now(tz)
-    url = "https://odds.p.rapidapi.com/v1/odds"
-
-    querystring = {"sport":"basketball_nba","region":"us","mkt":"h2h","dateFormat":"unix","oddsFormat":"american"}
-
-    headers = {
-        'x-rapidapi-key': '443730144emsh1ae00e467c31b68p14e65bjsnb5f3aeef6a68',
-        'x-rapidapi-host': "odds.p.rapidapi.com"
-        }
-
-    response = requests.request("GET", url, headers=headers, params=querystring)
-
-    respone_json = json.loads(response.text)
+    
+    response_json = get_odds_json(odds_url)
 
     sportsbooks = ["betmgm", "draft_kings" "williamhill_us"]
     home_odds_list = []
@@ -255,7 +245,7 @@ def get_odds_and_ev(df):
     away_team_list = []
 
 
-    todays_games = list(filter(lambda g: datetime.fromtimestamp(g["commence_time"]).astimezone(tz).day == today.day, respone_json["data"]))
+    todays_games = list(filter(lambda g: datetime.fromtimestamp(g["commence_time"]).astimezone(tz).day == today.day, response_json["data"]))
 
     for game in todays_games:
         teams = game["teams"]

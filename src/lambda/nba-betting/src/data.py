@@ -1,5 +1,9 @@
-import requests
 import pandas as pd
+import urllib3
+import urllib
+import json
+
+http = urllib3.PoolManager()
 
 games_header = {
     'user-agent': 'Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) '
@@ -23,18 +27,29 @@ data_headers = {
     'x-nba-stats-token': 'true'
 }
 
+odds_headers = {
+    'x-rapidapi-key': '443730144emsh1ae00e467c31b68p14e65bjsnb5f3aeef6a68',
+    'x-rapidapi-host': "odds.p.rapidapi.com"
+    }
 
 def get_json_data(url):
-    raw_data = requests.get(url, headers=data_headers)
-    json = raw_data.json()
-    return json.get('resultSets')
+    raw_data = http.request("GET", url, headers=data_headers)
+    json_data = json.loads(raw_data.data)
+    return json_data.get('resultSets')
 
 
 def get_todays_games_json(url):
-    raw_data = requests.get(url, headers=games_header)
-    json = raw_data.json()
-    return json.get('gs').get('g')
+    raw_data = http.request("GET", url, headers=games_header)
+    json_data = json.loads(raw_data.data)
+    return json_data.get('gs').get('g')
 
+def get_odds_json(url):
+
+    querystring = {"sport":"basketball_nba","region":"us","mkt":"h2h","dateFormat":"unix","oddsFormat":"american"}
+
+    url = f"{url}?{urllib.parse.urlencode(querystring)}"
+    response = http.request("GET", url, headers=odds_headers)
+    return json.loads(response.data)
 
 def to_data_frame(data):
     data_list = data[0]
