@@ -16,14 +16,14 @@ games_header = {
 
 data_headers = {
     'Accept': 'application/json, text/plain, */*',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Host': 'stats.nba.com',
+#    'Accept-Encoding': 'gzip, deflate, br',
+ #   'Host': 'stats.nba.com',
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.4 Safari/605.1.15',
     'Accept-Language': 'en-us',
     'Referer': 'https://stats.nba.com/teams/traditional/?sort=W_PCT&dir=-1&Season=2019-20&SeasonType=Regular%20Season',
-    'Connection': 'keep-alive',
-    'x-nba-stats-origin': 'stats',
-    'x-nba-stats-token': 'true'
+#    'Connection': 'keep-alive',
+#    'x-nba-stats-origin': 'stats',
+#    'x-nba-stats-token': 'true'
 }
 
 odds_headers = {
@@ -37,7 +37,8 @@ def get_json_data(url):
     # raw_data = http.urlopen('GET', url, headers=data_headers, timeout=15)
     # #raw_data = http.request("GET", url, timeout=15.0)
     # json_data = json.loads(raw_data.data)
-    from botocore.vendored import requests
+    #from botocore.vendored import requests
+    import requests
     raw_data = requests.get(url, headers=data_headers)
     json = raw_data.json()
     return json.get('resultSets')
