@@ -1,4 +1,4 @@
-FROM amazon/aws-lambda-python:3.8
+FROM amazon/aws-lambda-python:3.7
 COPY requirements.txt .
 RUN yum -y install git
 RUN pip install -r requirements.txt

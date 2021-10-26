@@ -37,7 +37,7 @@ def get_json_data(url):
     # raw_data = http.urlopen('GET', url, headers=data_headers, timeout=15)
     # #raw_data = http.request("GET", url, timeout=15.0)
     # json_data = json.loads(raw_data.data)
-    import requests
+    from botocore.vendored import requests
     raw_data = requests.get(url, headers=data_headers)
     json = raw_data.json()
     return json.get('resultSets')
