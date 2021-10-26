@@ -85,14 +85,18 @@ def lambda_handler(event, context):
     today = datetime.now(tz)
     print("Getting todays games...")
     data = get_todays_games_json(todays_games_url)
+    print("Retrieved todays game")
     games = create_todays_games(data)
-    data = get_json_data(data_url)
-    df = to_data_frame(data)
+    
     if not games:
         return {
             'statusCode': 200,
             'body': 'No games today!'
         }
+    print("Getting stats data...")
+    data = get_json_data(data_url)
+    print("Retrieved stats data")
+    df = to_data_frame(data)
     data, _ = createTodaysGames(games, df)
     
     data = normalize(data, axis=1)
