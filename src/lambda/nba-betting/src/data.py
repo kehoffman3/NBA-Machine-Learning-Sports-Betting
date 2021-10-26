@@ -1,4 +1,6 @@
 import pandas as pd
+import http.client
+http.client.HTTPConnection.debuglevel = 5
 import urllib3
 import json
 
@@ -30,9 +32,15 @@ odds_headers = {
     }
 
 def get_json_data(url):
-    http = urllib3.PoolManager()
-    raw_data = http.request("GET", url, headers=data_headers)
+
+    http = urllib3.PoolManager(10)
+    raw_data = http.urlopen('GET', url, headers=data_headers, timeout=15)
+    #raw_data = http.request("GET", url, timeout=15.0)
     json_data = json.loads(raw_data.data)
+    # import requests
+    # raw_data = requests.get(url, headers=data_headers)
+    # json = raw_data.json()
+    # return json.get('resultSets')
     return json_data.get('resultSets')
 
 
