@@ -33,15 +33,15 @@ odds_headers = {
 
 def get_json_data(url):
 
-    http = urllib3.PoolManager(10)
-    raw_data = http.urlopen('GET', url, headers=data_headers, timeout=15)
-    #raw_data = http.request("GET", url, timeout=15.0)
-    json_data = json.loads(raw_data.data)
-    # import requests
-    # raw_data = requests.get(url, headers=data_headers)
-    # json = raw_data.json()
-    # return json.get('resultSets')
-    return json_data.get('resultSets')
+    # http = urllib3.PoolManager(10)
+    # raw_data = http.urlopen('GET', url, headers=data_headers, timeout=15)
+    # #raw_data = http.request("GET", url, timeout=15.0)
+    # json_data = json.loads(raw_data.data)
+    import requests
+    raw_data = requests.get(url, headers=data_headers)
+    json = raw_data.json()
+    return json.get('resultSets')
+    #return json_data.get('resultSets')
 
 
 def get_todays_games_json(url):
