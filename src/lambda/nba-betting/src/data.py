@@ -1,9 +1,6 @@
 import pandas as pd
 import urllib3
-import urllib
 import json
-
-http = urllib3.PoolManager()
 
 games_header = {
     'user-agent': 'Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) '
@@ -33,22 +30,22 @@ odds_headers = {
     }
 
 def get_json_data(url):
+    http = urllib3.PoolManager()
     raw_data = http.request("GET", url, headers=data_headers)
     json_data = json.loads(raw_data.data)
     return json_data.get('resultSets')
 
 
 def get_todays_games_json(url):
+    http = urllib3.PoolManager()
     raw_data = http.request("GET", url, headers=games_header)
     json_data = json.loads(raw_data.data)
     return json_data.get('gs').get('g')
 
 def get_odds_json(url):
-
+    http = urllib3.PoolManager()
     querystring = {"sport":"basketball_nba","region":"us","mkt":"h2h","dateFormat":"unix","oddsFormat":"american"}
-
-    url = f"{url}?{urllib.parse.urlencode(querystring)}"
-    response = http.request("GET", url, headers=odds_headers)
+    response = http.request("GET", url, headers=odds_headers, fields=querystring)
     return json.loads(response.data)
 
 def to_data_frame(data):
