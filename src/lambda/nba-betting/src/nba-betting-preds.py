@@ -7,8 +7,7 @@ from io import StringIO
 import pytz
 import numpy as np
 import logging
-from tensorflow.keras.utils import normalize
-from tensorflow.keras.models import load_model
+import xgboost as xgb
 from data import get_json_data, to_data_frame, get_todays_games_json, create_todays_games, get_odds_json
 
 logger = logging.getLogger()
@@ -98,13 +97,13 @@ def lambda_handler(event, context):
     df = to_data_frame(data)
     data, _ = createTodaysGames(games, df)
     
-    data = normalize(data, axis=1)
-    
 
     print("Loading model...")
-    model = load_model('models/nba_nn_v1')
+    xgb_ml = xgb.Booster()
+
+    xgb_ml.load_model('models/XGBoost_74.9%_ML-2.json')
     print("Making predictions...")
-    preds_df = predict_nba_games(data, games, model)
+    preds_df = predict_nba_games(data, games, xgb_ml)
 
     # Make predictions and save to seperate file
     final_df = get_odds_and_ev(preds_df)
@@ -207,7 +206,8 @@ def predict_nba_games(data, games, model):
     away_teams = []
     game_ids = []
     for idx, row in enumerate(data):
-        pred = model.predict(np.array([row]))
+        
+        pred = model.predict(xgb.DMatrix(np.array([row])))
         
         home_probs.append(pred[0][1])
         away_probs.append(pred[0][0])
