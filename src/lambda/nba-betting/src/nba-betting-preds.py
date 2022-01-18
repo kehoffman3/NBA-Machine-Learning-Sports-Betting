@@ -1,4 +1,5 @@
 from datetime import datetime
+import time
 import pandas as pd
 import logging
 import boto3
@@ -79,6 +80,7 @@ def createTodaysGames(games, df):
     return data, frame_ml
 
 def lambda_handler(event, context):
+    #time.sleep(7200)
     tz = pytz.timezone('US/Eastern')
     today = datetime.now(tz)
     print("Getting todays games...")
